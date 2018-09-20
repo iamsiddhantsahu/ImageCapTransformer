@@ -15,7 +15,7 @@ def resize_image(image):
         left = 0
         right = width
     image = image.crop((left, top, right, bottom))
-    image = image.resize([224, 224], Image.ANTIALIAS)
+    image = image.resize([229, 229], Image.ANTIALIAS)
     return image
 
 def main():

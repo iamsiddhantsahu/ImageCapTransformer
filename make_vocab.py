@@ -1,10 +1,12 @@
-from hyperparams import Hyperparams as hp
+from hyperparameter import Hyperparams as hp
 import tensorflow as tf
 import numpy as np
 import codecs
 import os
 import regex
 from collections import Counter
+import pandas as pd
+import pickle
 
 def make_vocab(caption_string, fname):
     '''
@@ -17,8 +19,8 @@ def make_vocab(caption_string, fname):
     Writes vocabulary line by line to `preprocessed/fname`
 
     '''
-    
-    text = regex.sub("[^\s\p{Latin}']", "", text)
+
+    text = regex.sub("[^\s\p{Latin}']", "", caption_string)
     words = text.split()
     word2cnt = Counter(words)
     if not os.path.exists('preprocessed'): os.mkdir('preprocessed')
@@ -30,15 +32,17 @@ def make_vocab(caption_string, fname):
 def pickle_to_string(fpath):
     df = pd.read_pickle(fpath)
     cap = ''
-    for index, row in df.itterrows():
-        cap = cap + ' ' + row['caption'].astype(str)
+    for index, row in df.iterrows():
+        cap = cap + ' ' + row['caption']
+        if index % 100 == 0:
+            print(index, "words converted to string")
 
     return cap
 
 if __name__ == '__main__':
     caption_string_train = pickle_to_string("./train_lookup_table.pkl")
     caption_string_val = pickle_to_string("./val_lookup_table.pkl")
-    caption_string_all = caption_string_train + caption_string_val
-    make_vocab(caption_string_all, "vocab.tsv")
+    caption_string_all = caption_string_train + " " + caption_string_val
+    make_vocab(caption_string_all, "./vocab.tsv")
 
     print("Done")

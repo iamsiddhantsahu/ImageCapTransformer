@@ -49,6 +49,8 @@ def img_embedding(images):
         x = np.expand_dims(x, axis=0)
         x = tf.keras.applications.inception_resnet_v2.preprocess_input(x)
         features = model.predict(x)
+        #1*1 convolution to reduce chanels to 512
+        features = tf.keras.layers.Conv2D(512, (1,1), strides=(1, 1))(features)
 
     return features
 

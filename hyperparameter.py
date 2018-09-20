@@ -12,7 +12,7 @@ class Hyperparams:
     logdir = 'logdir' # log directory
 
     # model
-    maxlen = 10 # Maximum number of words in a sentence. alias = T.
+    maxlen = 25 # Maximum number of words in a sentence. alias = T.
                 # Feel free to increase this if you are ambitious.
     min_cnt = 20 # words whose occurred less than min_cnt are encoded as <UNK>.
     hidden_units = 512 # alias = C
