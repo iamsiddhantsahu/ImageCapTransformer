@@ -6,6 +6,7 @@ import codecs
 import regex
 import pandas as pd
 import PIL
+import pickle
 
 def load_en_vocab():
     vocab = [line.split()[0] for line in codecs.open('./preprocessed/vocab.tsv', 'r', 'utf-8').read().splitlines() if int(line.split()[1])>=hp.min_cnt]
@@ -18,14 +19,18 @@ def load_train_data():
 
     x_list, y_list = [], []
     df = pd.read_pickle('./train_lookup_table.pkl')
+    df = df[0:1500] # For testing purposes ONLY
     for index, row in df.iterrows():
         #load image for each row in DataFrame
-        image = np.asarray(PIL.Image.open(row['file_name']))
-        x_list.append(image) #appending each image to x_list
+        image = np.array(PIL.Image.open(row['file_name']))
         #load caption for each row in DataFrame
         caption = row['caption']
         y = [word2idx.get(word, 1) for word in (caption + u" </S>").split()] #add </S> end of each caption
-        y_list.append(np.array(y)) #append caption to y_list
+
+        if(image.shape == (224, 224, 3)):
+            x_list.append(image) #appending each image to x_list
+            y_list.append(np.array(y)) #append caption to y_list
+
 
         if index % 1000 == 0:
             print(index, "images and captions are loaded")
@@ -34,6 +39,8 @@ def load_train_data():
     y_padded = np.zeros([len(y_list), hp.maxlen], np.int32)
     for i, y in enumerate(y_list):
         y_padded[i] = np.lib.pad(y, [0, hp.maxlen-len(y)], 'constant', constant_values=(0, 0))
+
+    x_list = np.array(x_list, dtype = np.int32)
 
     return x_list, y_padded
 
