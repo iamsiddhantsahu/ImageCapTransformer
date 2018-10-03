@@ -15,14 +15,23 @@ def resize_image(image):
         left = 0
         right = width
     image = image.crop((left, top, right, bottom))
+<<<<<<< HEAD
     image = image.resize([224, 224], Image.ANTIALIAS)
+=======
+    image = image.resize([229, 229], Image.ANTIALIAS)
+>>>>>>> 1f589846e6dfa407077ad57147d54429b300c03f
     return image
 
 def main():
     splits = ['train', 'val']
     for split in splits:
+<<<<<<< HEAD
         folder = './image/%s2014' %split
         resized_folder = './image/%s2014_resized/' %split
+=======
+        folder = './data/images2014/%s2014' %split
+        resized_folder = './data/images2014/%s2014_resized/' %split
+>>>>>>> 1f589846e6dfa407077ad57147d54429b300c03f
         if not os.path.exists(resized_folder):
             os.makedirs(resized_folder)
         print ('Start resizing %s images.' %split)
