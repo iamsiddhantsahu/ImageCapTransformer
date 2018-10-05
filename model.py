@@ -18,7 +18,7 @@ from transformer_modules import *
 
 class CaptionGenerator(object):
     def __init__(self, word_to_idx, dim_feature=[196, 512], dim_embed=512, n_time_step=16,
-                 num_blocks = 6, num_heads = 8, dropout=0.1, is_training = True):
+                 num_blocks = 6, num_heads = 8, dropout=0.1):
         """
         Args:
             word_to_idx: word-to-index mapping dictionary.
@@ -76,7 +76,7 @@ class CaptionGenerator(object):
             ## Dropout
             enc = tf.layers.dropout(enc,
                                     rate=self.dropout,
-                                    training=tf.convert_to_tensor(is_training))
+                                    training=tf.convert_to_tensor(is_training = True))
 
             ## Blocks
             for i in range(self.num_blocks):
@@ -87,7 +87,7 @@ class CaptionGenerator(object):
                                             num_units=self.D,
                                             num_heads=self.num_heads,
                                             dropout_rate=self.dropout,
-                                            is_training=is_training,
+                                            is_training = True,
                                             causality=False)
 
                 ### Feed Forward
@@ -113,7 +113,7 @@ class CaptionGenerator(object):
             ## Dropout
             dec = tf.layers.dropout(dec,
                                     rate=self.dropout,
-                                    training=tf.convert_to_tensor(is_training))
+                                    training=tf.convert_to_tensor(is_training = True))
 
             ## Blocks
             for i in range(self.num_blocks):
@@ -124,7 +124,8 @@ class CaptionGenerator(object):
                                                 num_units=self.M,
                                                 num_heads=self.num_heads,
                                                 dropout_rate=self.dropout,
-                                                is_training=is_training,                                                    causality=True,
+                                                is_training = True,
+                                                causality=True,
                                                 scope="self_attention")
 
                     ## Multihead Attention ( vanilla attention)
@@ -133,7 +134,7 @@ class CaptionGenerator(object):
                                                 num_units=self.M,
                                                 num_heads=self.num_heads,
                                                 dropout_rate=self.dropout,
-                                                is_training=is_training,
+                                                is_training = True,
                                                 causality=False,
                                                 scope="vanilla_attention")
 
@@ -147,49 +148,98 @@ class CaptionGenerator(object):
         acc = tf.reduce_sum(tf.to_float(tf.equal(preds, self.captions))*istarget)/ (tf.reduce_sum(istarget))
         tf.summary.scalar('acc', acc)
 
-        if is_training:
-            # Loss
-            y_smoothed = label_smoothing(tf.one_hot(self.captions, depth=self.V)))
-            loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=y_smoothed)
-            mean_loss = tf.reduce_sum(loss*istarget) / (tf.reduce_sum(istarget))
+        # Loss
+        y_smoothed = label_smoothing(tf.one_hot(self.captions, depth=self.V)))
+        loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=y_smoothed)
+        mean_loss = tf.reduce_sum(loss*istarget) / (tf.reduce_sum(istarget))
 
         return mean_loss
 
     def build_sampler(self, max_len=20):
-        features = self.features
+        enc = self.features
+        N = self.features[0]
 
-        # batch normalize feature vectors
-        features = self._batch_norm(features, mode='test', name='conv_features')
+        preds = np.zeros((N, self.T), np.int32)
 
-        c, h = self._get_initial_lstm(features=features)
-        features_proj = self._project_features(features=features)
+        with tf.variable_scope("encoder"):
+            enc += positional_encoding(N,
+                        self.L,
+                        num_units=self.D,
+                        zero_pad=False,
+                        scale=False,
+                        scope="enc_pe")
 
-        sampled_word_list = []
-        alpha_list = []
-        beta_list = []
-        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=self.H)
 
-        for t in range(max_len):
-            if t == 0:
-                x = self._word_embedding(inputs=tf.fill([tf.shape(features)[0]], self._start))
-            else:
-                x = self._word_embedding(inputs=sampled_word, reuse=True)
+            ## Dropout
+            enc = tf.layers.dropout(enc,
+                                    rate=self.dropout,
+                                    training=tf.convert_to_tensor(is_training = False))
 
-            context, alpha = self._attention_layer(features, features_proj, h, reuse=(t!=0))
-            alpha_list.append(alpha)
+            ## Blocks
+            for i in range(self.num_blocks):
+                with tf.variable_scope("num_blocks_{}".format(i)):
+                ### Multihead Attention
+                enc = multihead_attention(queries=enc,
+                                            keys=enc,
+                                            num_units=self.D,
+                                            num_heads=self.num_heads,
+                                            dropout_rate=self.dropout,
+                                            is_training = False,
+                                            causality=False)
 
-            if self.selector:
-                context, beta = self._selector(context, h, reuse=(t!=0))
-                beta_list.append(beta)
+                ### Feed Forward
+                enc = feedforward(enc, num_units=[4*self.D, self.D])
 
-            with tf.variable_scope('lstm', reuse=(t!=0)):
-                _, (c, h) = lstm_cell(inputs=tf.concat( [x, context],1), state=[c, h])
+            # Decoder
+        with tf.variable_scope("decoder"):
+            ## Embedding
+            dec = embedding(preds,
+                              vocab_size=self.V,
+                              num_units=self.M,
+                              scale=True,
+                              scope="dec_embed")
 
-            logits = self._decode_lstm(x, h, context, reuse=(t!=0))
-            sampled_word = tf.argmax(logits, 1)
-            sampled_word_list.append(sampled_word)
+            ## Positional Encoding
+            dec += positional_encoding(N,
+                                  self.T,
+                                  num_units=self.M,
+                                  zero_pad=False,
+                                  scale=False,
+                                  scope="dec_pe")
 
-        alphas = tf.transpose(tf.stack(alpha_list), (1, 0, 2))     # (N, T, L)
-        betas = tf.transpose(tf.squeeze(beta_list), (1, 0))    # (N, T)
-        sampled_captions = tf.transpose(tf.stack(sampled_word_list), (1, 0))     # (N, max_len)
-        return alphas, betas, sampled_captions
+            ## Dropout
+            dec = tf.layers.dropout(dec,
+                                    rate=self.dropout,
+                                    training=tf.convert_to_tensor(is_training = False))
+
+            ## Blocks
+            for i in range(self.num_blocks):
+                with tf.variable_scope("num_blocks_{}".format(i)):
+                    ## Multihead Attention ( self-attention)
+                    dec = multihead_attention(queries=dec,
+                                                keys=dec,
+                                                num_units=self.M,
+                                                num_heads=self.num_heads,
+                                                dropout_rate=self.dropout,
+                                                is_training = False,
+                                                causality=True,
+                                                scope="self_attention")
+
+                    ## Multihead Attention ( vanilla attention)
+                    dec = multihead_attention(queries=dec,
+                                                keys=enc,
+                                                num_units=self.M,
+                                                num_heads=self.num_heads,
+                                                dropout_rate=self.dropout,
+                                                is_training = False,
+                                                causality=False,
+                                                scope="vanilla_attention")
+
+                    ## Feed Forward
+                    dec = feedforward(self.dec, num_units=[4*self.M, self.M])
+
+        # Final linear projection
+        logits = tf.layers.dense(dec, self.V)
+        preds = tf.to_int32(tf.arg_max(logits, dimension=-1))     # (N, max_len)
+
+        return preds

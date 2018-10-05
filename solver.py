@@ -80,7 +80,7 @@ class CaptioningSolver(object):
         with tf.variable_scope(tf.get_variable_scope()):
             loss = self.model.build_model()
             tf.get_variable_scope().reuse_variables()
-            _, _, generated_captions = self.model.build_sampler(max_len=20)
+            generated_captions = self.model.build_sampler(max_len=20)
 
         # train op
         with tf.variable_scope(tf.get_variable_scope(), reuse=False):
